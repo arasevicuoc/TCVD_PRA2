@@ -184,7 +184,7 @@ data_idealista <- data_idealista %>%
 summary(data_idealista)
 ```
 
-## Agragación de los datasets y selección de datos
+## Agregación de los datasets y selección de datos
 
 Una vez preparados los dos datasets de los portales immobiliarios, juantermos los datos en un único dataset.
 
@@ -205,15 +205,97 @@ summary(data2)
 # Limpieza de datos
 
 ------------------------------------------------------------------------
+```{r message= FALSE, warning=FALSE}
+fotocasa.pisos <- filter(data2, source=="Fotocasa" & tipo_vivienda=="Piso")
+fotocasa.casas <- filter(data2, source=="Fotocasa" & tipo_vivienda=="Casa")
+```
 
 
+## Valores nulos
+
+```{r message= FALSE, warning=FALSE}
+fotocasa.pisos <- filter(data2, source=="Fotocasa" & tipo_vivienda=="Piso")
+```
 
 
+## Valores extremos
 
+A continuación vamos a analizar los valores extremos mediante un boxplot para ver 
+```{r message= FALSE, warning=FALSE}
+fotocasa.bp <- boxplot(fotocasa.pisos$price)
+fotocasa.bp$out
+for (x in fotocasa.bp$out) {
+  print(subset(fotocasa.pisos, price == x))
+}
+```
+
+
+```{r message= FALSE, warning=FALSE}
+fotocasa.pisos <- fotocasa.pisos[-563,]
+```
+
+```{r message= FALSE, warning=FALSE}
+fotocasa.bp2 <- boxplot(fotocasa.pisos$surface)
+fotocasa.bp2$out
+for (x in fotocasa.bp2$out) {
+  print(subset(fotocasa.pisos, surface == x))
+}
+```
 
 
 ------------------------------------------------------------------------
 
-# Análisis de los datos
+# Análisis de los datos y representaciones gráficas
+
+------------------------------------------------------------------------
+
+## Análisis estadístico descriptivo
+
+```{r message= FALSE, warning=FALSE}
+summary(fotocasa.pisos)
+```
+
+```{r message= FALSE, warning=FALSE}
+str(fotocasa.pisos)
+```
+
+## Correlación
+
+```{r message= FALSE, warning=FALSE}
+fotocasa <- filter(data2, source=="Fotocasa")
+fotocasa_num <- subset(fotocasa, select=c(rooms, price, surface))
+#cor(fotocasa_num)
+
+#cor.mat <- round(cor(fotocasa),2)
+#cor.mat
+
+```
+
+
+
+
+## Regresión lineal
+
+```{r message= FALSE, warning=FALSE}
+library(ggplot2)
+a <- data2 %>% filter(data2$tipo_vivienda == "Piso")
+ggplot(data = a,aes(x=surface,y=price, color=rooms))+
+  geom_point(stat="identity") +
+  scale_colour_gradientn(colours=rainbow(6)) +
+  geom_smooth(method = "lm", se = TRUE) +
+  labs(x = "Superficie",
+    y = "Precio",
+    title = "Relación precio por superficie")
+```
+
+```{r message= FALSE, warning=FALSE}
+model <- lm(price ~ surface, subset(filter(fotocasa, tipo_vivienda == "Piso"), select=c(price, surface)))
+summary(model)
+```
+
+
+------------------------------------------------------------------------
+
+# Resolución del problema
 
 ------------------------------------------------------------------------

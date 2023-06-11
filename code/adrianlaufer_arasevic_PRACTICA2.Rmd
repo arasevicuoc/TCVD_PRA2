@@ -1,39 +1,51 @@
 ---
 title: "Practica 2"
-author: "Aleksandar Arasevic y Adrian Läufer"
+author: "Aleksandar Rasevic y Adrian Läufer"
 date: "Junio 2023"
-output: 
+output:
   html_document:
     highlight: default
     number_sections: yes
     theme: cosmo
     toc: yes
     toc_depth: 2
+  word_document: default
   pdf_document:
     highlight: zenburn
     toc: yes
-  word_document: default
 editor_options: 
-  chunk_output_type: console
+  chunk_output_type: inline
 ---
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
+```{r include=FALSE}
+# importamos las librerías que utilizaremos a lo largo de la PRA
+if(!require(dplyr)){
+  install.packages("dplyr")
+  require(dplyr)
+}
+
+if(!require(multiUS)){
+  install.packages("multiUS")
+  require(multiUS)
+}
+
+```
+
 ------------------------------------------------------------------------
 
-# Planteamiento del problema
+# Descripción del dataset
 
 ------------------------------------------------------------------------
 
-En la Práctica 1 realizamos webscraping a dos portales immobiliarios de Internet (Fotocasa.es y elidealista.com) con el objetivo de obtener todas las viviendas en venta en el municipio de Vilanova y la Geltrú. En esta segunda Práctica utilizaremos los dos datasets obtenidos entonces para realizar diferentes análisis.
+En la PRA1 realizamos web scraping a dos portales inmobiliarios de Internet (Fotocasa.es e Idealista.com) con el objetivo de obtener toda la información posible sobre el mayor número de viviendas en venta del municipio de Vilanova y la Geltrú. En esta segunda PRA nos ocupamos de procesar y analizar los datos obtenidos.
 
-El primer análisis que realizaremos será ver si existen correlaciones entre los metros cuadrados de superficie de los pisos y el precio de los pisos. Este análisis lo realizaremos para los diferentes grupos de viviendas: pisos y chalets o casas. Además, diferenciaremos en los pisos en función del número de habitaciones para ver si la correlación difiere mucho en función del número de habitaciones que tienen los pisos. Además intentaremos identificar que efecto tienen sobre el precio del piso ciertas propiedades como pueden ser tener una plaza de parking o tener una piscina.
+El problema principal que nos ocupa es explicar el comportamiento del precio en función de diferentes variables, que nos permitirá responder a preguntas como: ¿según incrementan los metros cuadrados de la propiedad, lo hace también necesariamente el precio? ¿Influye el tipo de inmueble (piso, casa, chalet) sobre el precio? ¿Son estas relaciones consistentes entre los dos portales o se observan diferencias? ¿Podemos ajustar un modelo de predicción de precios con los datos disponibles? 
 
-Este tipo de análisis tiene una especial importancia a la hora de invertir en un piso, ya que con ello se pueden identificar pisos ganga o viviendas con un precio es excesivo y por las cuales podemos como inversores negociar un mejor precio.
-
-El segundo análisis que intentaremos realizar consistirá en identificar las mismas viviendas ofertadas en los mismos portales immobiliarios y ver si existen diferencias en los precios propuestos.
+Para responder a estas preguntas disponemos de dos datasets diferentes, `output_fotocasa.csv`, con un total de 1097 registros y `output_idealista.csv`, de 1020 registros. Es importante destacar que existe una notable asimetría en la información disponible en los dos datasets, contando `output_fotocasa.csv` con un número mayor de columnas, 15 respecto a las 6 de `output_idealista.csv`; trataremos esta situación en el apartado de integración. En todo caso, creemos que contamos con la información necesaria para dar respuesta al problema planteado, o al menos una primera aproximación.
 
 ------------------------------------------------------------------------
 
@@ -41,89 +53,271 @@ El segundo análisis que intentaremos realizar consistirá en identificar las mi
 
 ------------------------------------------------------------------------
 
-La integración de los datos la realizaremos para los dos datasets obtenidos de forma diferente, ya que el formato de los datos extraidos difiere algo de cada portal immobiliario. Una vez realizada la integración, juntaremos los dos datasets y realizaremos la selección de los datos que utlizaremos para el futuro análisis.
+Debido a la asimetría comentada en el apartado anterior, una integración directa de los datos resultaría en la eliminación de muchas columnas del archivo `output_fotocasa.csv` que podrían resultar interesantes para realizar análisis intraportal más detallados. 
 
-## Datos de fotocasa
+Por tanto, la estrategia a seguir será la siguiente: realizar operaciones de selección y limpieza de forma independiente para cada una de las fuentes, cuyo resultado serán los DataFrames `fotocasa.df` e `idealista.df` con los que podremos realizar los análisis intragrupo, y finalmente integrar ambas fuentes en un tercer DataFrame `real_state.df` sobre el que realizaremos operaciones de selección y con el que podremos llevar a cabo anális intergrupo.
 
-En primer lugar importaremos el archivo output_fotocasa.csv con los dato del webscraping del portal fotocasa.es
+## Fotocasa.es
+
+En primer lugar importaremos el archivo `output_fotocasa.csv` con los dato del web scraping del portal www.fotocasa.es
 
 ```{r message= FALSE, warning=FALSE}
-data_fotocasa <- read.csv('output_fotocasa.csv')
+fotocasa.df <- read.csv('../output_fotocasa.csv')
 ```
 
-Con la función summary vemos que todos los datos importados tienen la misma longitud y que son del mismo tipo, en este caso del tipo carácter.
+Con la función `summary()` comprobamos que todos los datos importados tienen la misma longitud y que son del mismo tipo, en este caso del tipo carácter.
+
 ```{r message= FALSE, warning=FALSE}
-summary(data_fotocasa)
+summary(fotocasa.df)
 ```
 
-A continuación vemos una extracción de los veinte primeros registros con tal de ver como están los datos estructurados.
-```{r message= FALSE, warning=FALSE}
-head(data_fotocasa,20)
+A priori, las columnas "info_card_type" y "link" no son relevantes para los análisis que tenemos en mente. La primera representa un etiquetado interno de los contenedores HTML por propiedad según la cantidad de información que se muestra en la tarjeta resumen de la propiedad, mientras que la segunda representa la URL completa de la propiedad en cuestión.
+
+Esta segunda variable es útil para llevar a cabo un test rápido de integridad: si tenemos links duplicados, significa que tenemos registros duplicados. Verifiquemos:
+
+```{r}
+length(fotocasa.df$link) == length(unique(fotocasa.df$link))
 ```
 
-Tal y como vemos en la columna "title", la primera palabra de cada registro indica el tipo de viviend aque es. Con tal de poder distinguir en función de este parámetro, crearemos la variable tipo de vivienda, que extrae la primera palabra del registro title.
+Comprobamos que los registros son únicos. Eliminamos las columnas:
 
-```{r message= FALSE, warning=FALSE}
-library(dplyr)
-data_fotocasa$tipo_vivienda <- gsub(" .*$","",data_fotocasa$title)
+```{r}
+fotocasa.df <- select(fotocasa.df, -c(info_card_type, link)) 
 ```
 
-Las columnas "rooms", "price" y "surface" se deben de transformar en valores numéricos ya que indican el número de habitaciones, el precio de la vivienda o los metros cuadrados que tienen la vivienda. Para ello extraeremos los números de cada una de sus respectivas columnas y transformaremos mediante as.numeric la columna del tipo character en numérica.
+Operaciones de selección más detalladas requerirán un tratamiento más sistemático de los datos: cambios de formato, extracción de información relevante de variables de texto, análisis de proporciones de valores NA, etc. Por ello, las aplazamos al apartado 3.
+
+------------------------------------------------------------------------
+
+# Limpieza de datos
+
+------------------------------------------------------------------------
+
+## Fotocasa.es
+
+### Preprocesamiento y gestión de valores nulos
+
+Primero, nos ocupamos de las operaciones de cambio de formato de `character` al tipo más adecuado para la variable en cuestión. Las columnas "rooms", "bathrooms", "price" y "surface" se deben transformar en valores numéricos ya que representan, respectivamente, el número de habitaciones, el número de cuartos de baño, el precio o los metros cuadrados que tiene la vivienda en cuestión. Para ello, extraemos los números de sus columnas y los transformamos mediante la función `as.numeric()`:
 
 ```{r message= FALSE, warning=FALSE}
-data_fotocasa$rooms <- substr(data_fotocasa$rooms, 0, 1)
-data_fotocasa$rooms <- as.numeric(data_fotocasa$rooms)
-```
-
-```{r message= FALSE, warning=FALSE}
-data_fotocasa$price <- sub("*.\200","",data_fotocasa$price)
-data_fotocasa$price <- gsub("\\.","",data_fotocasa$price)
-data_fotocasa$price <- as.numeric(data_fotocasa$price)
-```
-
-```{r message= FALSE, warning=FALSE}
-data_fotocasa$surface <- gsub(" .*$","",data_fotocasa$surface)
-data_fotocasa$surface <- as.numeric(data_fotocasa$surface)
-```
-
-Por otra parte, las columnas "swimming_pool", "parking" y "elevator" se pueden transformar en variables booleans con tal de facilitar el posterior análisis. Para ello utilizaremos la función as.logical una vez que hemos identificado los valores verdaderos.
-
-```{r message= FALSE, warning=FALSE}
-data_fotocasa$swimming_pool[data_fotocasa$swimming_pool == "Piscina"] <- TRUE
-data_fotocasa$swimming_pool[data_fotocasa$swimming_pool == ""] <- FALSE
-data_fotocasa$swimming_pool <- as.logical(data_fotocasa$swimming_pool)
-```
-
-```{r message= FALSE, warning=FALSE}
-data_fotocasa$parking[data_fotocasa$parking == "Parking"] <- TRUE
-data_fotocasa$parking[data_fotocasa$parking == ""] <- FALSE
-data_fotocasa$parking <- as.logical(data_fotocasa$parking)
-```
-
-
-```{r message= FALSE, warning=FALSE}
-data_fotocasa$elevator[data_fotocasa$elevator == "Elevator"] <- TRUE
-data_fotocasa$elevator[data_fotocasa$elevator == ""] <- FALSE
-data_fotocasa$elevator <- as.logical(data_fotocasa$elevator)
-```
-
-Por último, añadiremos la columna "source" con el valor constante Fotocasa, con tal de poder distinguir posteriormente entre los datos de fotocasa y elidealista.
-
-```{r message= FALSE, warning=FALSE}
-data_fotocasa <- data_fotocasa %>%
-  mutate(source = "Fotocasa")
+fotocasa.df$rooms <- substr(fotocasa.df$rooms, 0, 1)
+fotocasa.df$rooms <- round(as.integer(fotocasa.df$rooms))
 ```
 
 ```{r message= FALSE, warning=FALSE}
-summary(data_fotocasa)
+fotocasa.df$bathrooms <- substr(fotocasa.df$bathrooms, 1, 1)
+fotocasa.df$bathrooms <- as.numeric(fotocasa.df$bathrooms)
 ```
 
-## Datos de el idealista
-
-A continuación importamos los datos extraidos del portal el idealista y vemos con la función summary como están compuetos
+```{r message= FALSE, warning=FALSE}
+fotocasa.df$price <- sub("*.\200","",fotocasa.df$price)
+fotocasa.df$price <- gsub("\\.","",fotocasa.df$price)
+fotocasa.df$price <- as.numeric(fotocasa.df$price)
+```
 
 ```{r message= FALSE, warning=FALSE}
-data_idealista <- read.csv('output_idealista.csv')
+fotocasa.df$surface <- gsub(" .*$","",fotocasa.df$surface)
+fotocasa.df$surface <- as.numeric(fotocasa.df$surface)
+```
+
+Por otra parte, las columnas "parking", "balcony", "terrace", "elevator", "heating", "swimming_pool" y "air_conditioner" se pueden transformar en variables booleanas con tal de facilitar el posterior análisis. Para ello utilizaremos la función `as.logical()`. Si la columna viene informada, quiere decir que la vivienda cuenta con la instalación específica:
+
+```{r message= FALSE, warning=FALSE}
+fotocasa.df$parking[fotocasa.df$parking == "Parking"] <- TRUE
+fotocasa.df$parking[fotocasa.df$parking == ""] <- FALSE
+fotocasa.df$parking <- as.logical(fotocasa.df$parking)
+```
+
+```{r message= FALSE, warning=FALSE}
+fotocasa.df$balcony[fotocasa.df$balcony == "Balcón"] <- TRUE
+fotocasa.df$balcony[fotocasa.df$balcony == ""] <- FALSE
+fotocasa.df$balcony <- as.logical(fotocasa.df$balcony)
+```
+
+```{r message= FALSE, warning=FALSE}
+fotocasa.df$terrace[fotocasa.df$terrace == "Terraza"] <- TRUE
+fotocasa.df$terrace[fotocasa.df$terrace == ""] <- FALSE
+fotocasa.df$terrace <- as.logical(fotocasa.df$terrace)
+```
+
+```{r message= FALSE, warning=FALSE}
+fotocasa.df$elevator[fotocasa.df$elevator == "Ascensor"] <- TRUE
+fotocasa.df$elevator[fotocasa.df$elevator == ""] <- FALSE
+fotocasa.df$elevator <- as.logical(fotocasa.df$elevator)
+```
+
+```{r message= FALSE, warning=FALSE}
+fotocasa.df$heating[fotocasa.df$heating == "Calefacción"] <- TRUE
+fotocasa.df$heating[fotocasa.df$heating == ""] <- FALSE
+fotocasa.df$heating <- as.logical(fotocasa.df$heating)
+```
+
+```{r message= FALSE, warning=FALSE}
+fotocasa.df$swimming_pool[fotocasa.df$swimming_pool == "Piscina"] <- TRUE
+fotocasa.df$swimming_pool[fotocasa.df$swimming_pool == ""] <- FALSE
+fotocasa.df$swimming_pool <- as.logical(fotocasa.df$swimming_pool)
+```
+
+```{r message= FALSE, warning=FALSE}
+fotocasa.df$air_conditioner[fotocasa.df$air_conditioner == "Aire acondicionado"] <- TRUE
+fotocasa.df$air_conditioner[fotocasa.df$air_conditioner == ""] <- FALSE
+fotocasa.df$air_conditioner <- as.logical(fotocasa.df$air_conditioner)
+```
+
+Finalmente, nos ocupamos de las variables categóricas de varios valores: las columnas "floor" y "title", de la que podemos extraer información sobre las características generales de la vivienda. La conversión de "floor" es inmediata, para "title" debemos realizar algunas manipulaciones: extraemos mediante la función `gsub()` la primera palabra del texto, que siempre tiene valores como "Piso", "Ático", etc., y la almacenamos en la columna "tipo_vivienda" y la convertimos a variable categórica utilizando la función `as.factor()`. Finalmente, eliminamos la variable "title":
+
+```{r}
+fotocasa.df$floor <- as.factor(fotocasa.df$floor)
+```
+
+
+```{r message= FALSE, warning=FALSE}
+fotocasa.df$tipo_vivienda <- gsub(" .*$","",fotocasa.df$title)
+fotocasa.df$tipo_vivienda <- as.factor(fotocasa.df$tipo_vivienda)
+fotocasa.df <- select(fotocasa.df, -title)
+```
+
+Ahora podemos ejecutar la función `summary()` para entender mejor el estado de nuestros datos:
+
+```{r}
+summary(fotocasa.df)
+```
+
+Llama la atención que existan un total de 984 NA's en la columna "bathrooms". Una inspección del fichero demuestra que no es un artefacto producido por el tratamiento de datos, si no que la variable no se capturó correctamente durante el proceso de web scraping. Esto puede ser debido a muchas razones: es posible que en el HTML de la página no se cargase esta variable pasado un cierto número de páginas, que tardase más que el tiempo de espera configurado por página o que se almacenase en contenedores diferentes. En todo caso, dado que el porcentaje de NA's de esta variable es del 89.7%, optamos por darla por perdida y eliminar la columna.
+
+```{r message= FALSE, warning=FALSE}
+fotocasa.df <- subset(fotocasa.df, select = -bathrooms)
+```
+
+
+Encontramos otro problema si observamos la variable "floor": contiene un total de 600 entradas en blanco, esto es un 55.7% del total. Dado el significado de esta variable, podríamos inferir que si está en blanco la propiedad es independiente y por tanto no debe ser registrada como un bajo o una primera planta. Sin embargo, si observamos los valores de "tipo_vivienda" para los registros donde "floor" no se encuentra informado, esta hipótesis no se sostiene:
+
+```{r}
+summary(fotocasa.df$tipo_vivienda[fotocasa.df$floor == ""])
+```
+
+Observamos un total de 222 propiedades catalogadas como "Piso" en las que no se ha informado la planta. La alta proporción de valores nulos y la falta de un criterio obvio de imputación indican que será mejor prescindir de esta columna para futuros análisis:
+
+```{r message= FALSE, warning=FALSE}
+fotocasa.df <- subset(fotocasa.df, select = -floor)
+```
+
+Respecto a la columna "tipo_vivienda", también notamos ciertas particularidades con sus valores:
+
+```{r}
+summary(fotocasa.df$tipo_vivienda)
+```
+
+```{r message= FALSE, warning=FALSE}
+summary(fotocasa.df$tipo_vivienda)
+```
+
+La distribución de valores se halla muy concentrada en los valores "Piso" y "Casa", que comprenden el 87.1% del total de registros. Además de que su proporción es relativamente baja, estos registros son poco numerosos en términos absolutos, por lo que hacer estadística sobre ellos carece de sentido. Interpretamos que un "Ático" o una "Planta" son "Pisos", mientras que agrupamos el resto de tipos en el grupo genérico "Otros":
+
+```{r}
+levels(fotocasa.df$tipo_vivienda)[levels(fotocasa.df$tipo_vivienda)=="Ático"] <- "Piso"
+levels(fotocasa.df$tipo_vivienda)[levels(fotocasa.df$tipo_vivienda)=="Planta"] <- "Piso"
+levels(fotocasa.df$tipo_vivienda)[levels(fotocasa.df$tipo_vivienda)=="Apartamento"] <- "Otros"
+levels(fotocasa.df$tipo_vivienda)[levels(fotocasa.df$tipo_vivienda)=="Dúplex"] <- "Otros"
+levels(fotocasa.df$tipo_vivienda)[levels(fotocasa.df$tipo_vivienda)=="Estudio"] <- "Otros"
+levels(fotocasa.df$tipo_vivienda)[levels(fotocasa.df$tipo_vivienda)=="Finca"] <- "Otros"
+levels(fotocasa.df$tipo_vivienda)[levels(fotocasa.df$tipo_vivienda)=="Loft"] <- "Otros"
+summary(fotocasa.df$tipo_vivienda)
+```
+Finalmente, observamos que en las columnas "rooms" y "price" tenemos un reducido número de valores faltantes: 90 en "rooms", 8.2% del total y 3 en "price", 0.2% del total. Debido a su baja incidencia, decidimos imputar los valores por knn. Podemos utilizar la función `impute.knn()` de la librería estándar de R. Dado que a estas alturas el dataset se encuentra bastante depurado y las incidencias de NAs restantes son relativamente bajas, invocamos la función con sus valores por defecto:
+
+```{r}
+fotocasa.df <- KNNimp(fotocasa.df)
+summary(fotocasa.df)
+```
+
+Comprobamos mediante `summary()` que los valores faltantes han sido debidamente imputados. Finalmente, antes de proceder, debemos notar un último detalle sobre la imputación realizada: el clasificador de KNN entrenado no es adecuado para la imputación de variables categóricas, sean ordinales o nominales, dado que para el cálculo se utiliza la media de los k vecinos más cercanos. Ello resulta en valores no enteros sin sentido, como por ejemplo 2.77 habitaciones. Eliminamos esta situación redondeando los valores resultantes de la imputación a su valor entero más cercano:
+
+```{r}
+fotocasa.df$rooms <- round(fotocasa.df$rooms)
+```
+
+### Gestión de valores extremos
+
+Si observamos la salida de la función `summary()`, observamos que los valores máximos de las variables "price", "rooms" y "surface" son anormalmente grandes. Esto es un buen indicador de que pueden existir valores extremos, cuya presencia determinaremos con ayuda de la función `boxplot.stats()`, que nos permite localizar valores significativamente alejados de los rangos intercuartílicos, por defecto más de 1.5 veces el rango intercuartílico superior o inferior:
+
+```{r}
+boxplot.stats(x=fotocasa.df$price, coef=1.5)
+```
+
+Con la configuración por defecto, se detectan un total de 57 valores anómalos. Si observamos la salida de la función, el valor del bigote superior es de 620000. Alterar el valor del argumento `coef` nos permite observar la aparición y desaparición de valores anómalos. Se observa que salvo algunos valores que se encuentran cerca del bigote superior, como 660000 o 685000, existe un pequeño grupo de viviendas por encima de los 800000 que siempre son detectados como anómalos. Antes de tomar una decisión sobre qué hacer con estos valores anómalos, investiguemos su presencia en el resto de variables numéricas:
+
+```{r}
+boxplot.stats(x=fotocasa.df$rooms, coef=1.5)
+```
+Para el número de habitaciones observamos anomalías en ambas direcciones. Sin embargo, una vivienda de una habitación es fácil de imaginar: tal vez se refiera a aquéllas etiquetadas como "estudio" en "tipo_vivienda" o pisos pequeños; por otro lado, es probable que las viviendas de más de cinco habitaciones estén relacionadas con los registros de precios anormalmente altos. Comprobamos esta relación gráficamente:
+
+```{r}
+plot(x=fotocasa.df$price, y=fotocasa.df$rooms, main="Price vs. # of rooms", xlab="Price in €", ylab="# of rooms")
+```
+
+El gráfico demuestra que la relación planteada en el apartado superior no parece cumplirse en la realidad. La propiedad más cara de todas, con un precio superior a los 10 millones de euros, aparece listada con sólo dos habitaciones; también se observa una propiedad listada con una habitación que supera los dos millones de euros. Finalmente, evaluamos la variable "surface":
+
+
+```{r}
+boxplot.stats(x=fotocasa.df$surface, coef=1.5)
+```
+
+En el enlace https://www.arrevol.com/blog/cual-es-el-tamano-superficie-adecuado-minimo-necesario-de-una-casa-vivienda-piso-para-una-familia-de-4 se puede encontrar un artículo donde se estudia la superficie mínima de una vivienda de 4 personas. La conclusión del artículo es que unos $85m^2$ construidos deberían ser suficientes, y vemos que la media obtenida es de $102m^2$, que podríamos considerar en concordancia con el estudio. Los valores anómalos superiores muestran cifras enormes en algunos casos, como por ejemplo 1064, 2400 o 4400, que debemos imaginar que no se corresponden a metros totales construidos sino a la superficie de la finca en la que se encuentra la propiedad. Por otro lado, aunque no figura como valor anómalo, observamos que el mínimo de la variable es 1, un sinsentido. Exploremos la relación de esta variable respecto al precio y al número de habitaciones:
+
+```{r}
+plot(x=fotocasa.df$price, y=fotocasa.df$surface, main="Price vs. surface", xlab="Price in €", ylab="Surface in m^2")
+```
+
+Observamos de nuevo anomalías muy llamativas. La vivienda que cuenta con más de una hectárea ni se acerca al millón de euros, mientras que la propiedad cuyo precio ronda los 10 millones de euros es también una de las que tiene menor superficie en metros cuadrados. Cerca del cluster inferior izquierdo se puede inferir una cierta relación lineal, pero los valores que observamos fuera de este rango parecen difíciles de justificar.
+
+Una vez realizado el análisis de valores extremos, procedemos a su tratamiento. Dado que el problema que queremos responder es la búsqueda de relaciones generales entre el precio y otras variables, consideramos que los registros que muestran comportamientos anómalos contribuyen negativamente a este objetivo y complican la imagen general que pretendemos obtener. Por ello, decidimos eliminar los registros según los siguientes criterios:
+
+**Precio**: si el precio ha sido catalogado como anómalo por `boxplot.stats()`, lo eliminamos. Sólo unos pocos registros se encuentran cerca del valor del bigote superior, mientras que la mayoría de valores anómalos se encuentran muy por encima.
+
+**Habitaciones**: si el registro tiene más de 6 habitaciones, lo eliminamos. Aunque 6 se encuentra catalogado como anómalo, su distribución de precios nos hace pensar que tiene un comportamiento relativamente normal. Existen muy pocos registros de más de seis habitaciones y todos ellos muestran relaciones complicadas con el precio.
+
+**Superficie**: si el registro figura con 1 metro cuadrado o figura en la salida de `boxplot.stats()`, lo eliminamos. Hablamos de propiedades muy grandes, consideradas como el cuádruple o quintuple de lo que una familia de cuatro necesitaría y dado que en las variables que hemos extraído de Fotocasa no figura ninguna referencia a la presencia o no de jardín o si los metros cuadrados son construidos o totales, no tenemos forma de cuadrar estas observaciones con el resto.
+
+```{r}
+fotocasa.df <- fotocasa.df[!(fotocasa.df$price %in% boxplot.stats(x=fotocasa.df$price, coef=1.5)$out),]
+fotocasa.df <- fotocasa.df[!(fotocasa.df$rooms > 6),]
+fotocasa.df <- fotocasa.df[!(fotocasa.df$surface == 1),]
+fotocasa.df <- fotocasa.df[!(fotocasa.df$surface %in% boxplot.stats(x=fotocasa.df$surface, coef=1.5)$out),]
+```
+
+Estas operaciones han resultado en una reducción del dataset de 1097 registros a 946, por tanto se ha eliminado un 14% de los registros por considerarlo anómalo. Aunque a priori esto pueda parecer una reducción muy grande en términos relativos, debemos tener en cuenta que muchos de los casos expuestos a lo largo de esta discusión son realmente difíciles de comprender: tal vez se trate de propiedades de ultralujo, superficies destinadas a usos comerciales, propiedades de alquiler listadas como propiedades en venta, etc. Dependemos en cierta medida de la moderación de Fotocasa, y quien haya utilizado cualquiera de estos portales podrá verificar que en muchas ocasiones se listan anuncios con características imposibles por error del anunciante o en ocasiones por estafas aún no reportadas.
+
+Finalmente, observemos una vez más los gráficos producidos en este apartado para verificar si las relaciones se han visto alteradas ahora que hemos eliminado los valores considerados anómalos:
+
+```{r}
+plot(x=fotocasa.df$price, y=fotocasa.df$rooms, main="Price vs. # of rooms", xlab="Price in €", ylab="# of rooms")
+```
+
+```{r}
+plot(x=fotocasa.df$price, y=fotocasa.df$surface, main="Price vs. surface", xlab="Price in €", ylab="Surface in m^2")
+```
+
+Podemos observar en el primer gráfico, por ejemplo, que la media del precio de los pisos listados con dos habitaciones es menor que la media de los pisos listados con cuatro habitaciones. En el segundo gráfico puede observarse cierta tendencia lineal, si bien con mucha dispersión, de la relación superficie-precio. Reservamos análisis en mayor profundidad para los apartados siguientes.
+
+
+Por último, añadiremos la columna "source" con el valor constante "Fotocasa", con tal de poder distinguir posteriormente entre los datos según su fuente:
+
+```{r message= FALSE, warning=FALSE}
+fotocasa.df <- fotocasa.df %>% mutate(source = "Fotocasa")
+```
+
+Ahora que los datos ya se encuentran en el formato adecuado, podemos pasar a analizar sus distribuciones en busca de valores faltantes o extremos y decidir qué hacer con ellos.
+
+
+
+
+## Datos de Idealista.com
+
+A continuación importamos los datos extraidos del portal el idealista y vemos con la función summary como están compuestos
+
+```{r message= FALSE, warning=FALSE}
+data_idealista <- read.csv('../output_idealista.csv')
 summary(data_idealista)
 ```
 
@@ -205,6 +399,7 @@ summary(data2)
 # Limpieza de datos
 
 ------------------------------------------------------------------------
+
 ```{r message= FALSE, warning=FALSE}
 fotocasa.pisos <- filter(data2, source=="Fotocasa" & tipo_vivienda=="Piso")
 fotocasa.casas <- filter(data2, source=="Fotocasa" & tipo_vivienda=="Casa")
@@ -245,7 +440,7 @@ for (x in fotocasa.bp2$out) {
 
 ------------------------------------------------------------------------
 
-# Análisis de los datos y representaciones gráficas
+# Análisis de los datos y representación de los resultados
 
 ------------------------------------------------------------------------
 

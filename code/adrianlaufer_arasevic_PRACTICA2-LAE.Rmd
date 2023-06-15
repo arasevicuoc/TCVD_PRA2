@@ -48,11 +48,7 @@ if(!require(corrplot)){
 }
 ```
 
-------------------------------------------------------------------------
-
-# Descripción del dataset
-
-------------------------------------------------------------------------
+# 1. Descripción del dataset
 
 En la PRA1 realizamos web scraping al portal web inmobiliario Fotocasa.es con el objetivo de obtener toda la información posible sobre el mayor número de viviendas en venta del municipio de Vilanova y la Geltrú. En esta segunda PRA nos ocupamos de procesar y analizar los datos obtenidos.
 
@@ -60,11 +56,7 @@ El problema principal que nos ocupa es explicar el comportamiento del precio en 
 
 Para responder a estas preguntas disponemos del dataset `output_fotocasa.csv`, con un total de 1097 registros y 15 variables. Si bien es probable que la cantidad de datos disponible será un factor limitante para la calidad del modelo, creemos que es suficiente para descubrir relaciones de interés entre las variables a través del análisis estadístico, de forma que el trabajo aquí desarrollado podría ser utilizado como base de un nuevo proyecto de web scraping cuyo objetivo fuera un modelo de predicción de precios de mayor escala.
 
-------------------------------------------------------------------------
-
-# Integración y selección
-
-------------------------------------------------------------------------
+# 2. Integración y selección
 
 La fase de integración de datos, entendida ésta como la combinación de información procedente de diversas fuentes, es inexistente en este proyecto dado que contamos con un único archivo .csv resultante de la PRA1. Por tanto, pasamos directamente a la carga en memoria del fichero y la fase de selección:
 
@@ -94,13 +86,9 @@ fotocasa.df <- select(fotocasa.df, -c(info_card_type, link))
 
 Operaciones de selección más detalladas requerirán un tratamiento más sistemático de los datos: cambios de formato, extracción de información relevante de variables de texto, análisis de proporciones de valores NA, etc. Por ello, las aplazamos al apartado 3.
 
-------------------------------------------------------------------------
+# 3. Limpieza de datos
 
-# Limpieza de datos
-
-------------------------------------------------------------------------
-
-## Preprocesamiento y gestión de valores nulos
+## 3.1. Preprocesamiento y gestión de valores nulos
 
 Primero, nos ocupamos de las operaciones de cambio de formato de `character` al tipo más adecuado para la variable en cuestión. Las columnas "rooms", "bathrooms", "price" y "surface" se deben transformar en valores numéricos ya que representan, respectivamente, el número de habitaciones, el número de cuartos de baño, el precio o los metros cuadrados que tiene la vivienda en cuestión. Para ello, extraemos los números de sus columnas y los transformamos mediante la función `as.numeric()`:
 
@@ -194,7 +182,6 @@ Llama la atención que existan un total de 984 NA's en la columna "bathrooms". U
 fotocasa.df <- subset(fotocasa.df, select = -bathrooms)
 ```
 
-
 Encontramos otro problema si observamos la variable "floor": contiene un total de 600 entradas en blanco, esto es un 55.7% del total. Dado el significado de esta variable, podríamos inferir que si está en blanco la propiedad es independiente y por tanto no debe ser registrada como un bajo o una primera planta. Sin embargo, si observamos los valores de "tipo_vivienda" para los registros donde "floor" no se encuentra informado, esta hipótesis no se sostiene:
 
 ```{r}
@@ -225,6 +212,7 @@ levels(fotocasa.df$tipo_vivienda)[levels(fotocasa.df$tipo_vivienda)=="Finca"] <-
 levels(fotocasa.df$tipo_vivienda)[levels(fotocasa.df$tipo_vivienda)=="Loft"] <- "Otros"
 summary(fotocasa.df$tipo_vivienda)
 ```
+
 Finalmente, observamos que en las columnas "rooms" y "price" tenemos un reducido número de valores faltantes: 90 en "rooms", 8.2% del total y 3 en "price", 0.2% del total. Debido a su baja incidencia, decidimos imputar los valores por knn. Podemos utilizar la función `impute.knn()` de la librería estándar de R. Dado que a estas alturas el dataset se encuentra bastante depurado y las incidencias de NAs restantes son relativamente bajas, invocamos la función con sus valores por defecto:
 
 ```{r}
@@ -238,7 +226,7 @@ Comprobamos mediante `summary()` que los valores faltantes han sido debidamente 
 fotocasa.df$rooms <- round(fotocasa.df$rooms)
 ```
 
-## Gestión de valores extremos
+## 3.2. Gestión de valores extremos
 
 Si observamos la salida de la función `summary()`, observamos que los valores máximos de las variables "price", "rooms" y "surface" son anormalmente grandes. Esto es un buen indicador de que pueden existir valores extremos, cuya presencia determinaremos con ayuda de la función `boxplot.stats()`, que nos permite localizar valores significativamente alejados de los rangos intercuartílicos, por defecto más de 1.5 veces el rango intercuartílico superior o inferior:
 
@@ -258,7 +246,6 @@ plot(x=fotocasa.df$price, y=fotocasa.df$rooms, main="Price vs. # of rooms", xlab
 ```
 
 El gráfico demuestra que la relación planteada en el apartado superior no parece cumplirse en la realidad. La propiedad más cara de todas, con un precio superior a los 10 millones de euros, aparece listada con sólo dos habitaciones; también se observa una propiedad listada con una habitación que supera los dos millones de euros. Finalmente, evaluamos la variable "surface":
-
 
 ```{r}
 boxplot.stats(x=fotocasa.df$surface, coef=1.5)
@@ -301,27 +288,16 @@ plot(x=fotocasa.df$price, y=fotocasa.df$surface, main="Price vs. surface", xlab=
 
 Podemos observar en el primer gráfico, por ejemplo, que la media del precio de los pisos listados con dos habitaciones es menor que la media de los pisos listados con cuatro habitaciones. En el segundo gráfico puede observarse cierta tendencia lineal, si bien con mucha dispersión, de la relación superficie-precio. Reservamos análisis en mayor profundidad para los apartados siguientes.
 
-
-Por último, añadiremos la columna "source" con el valor constante "Fotocasa", con tal de poder distinguir posteriormente entre los datos según su fuente:
-
-```{r message= FALSE, warning=FALSE}
-fotocasa.df <- fotocasa.df %>% mutate(source = "Fotocasa")
-```
-
 Ahora que los datos ya se encuentran en el formato adecuado, podemos pasar a analizar sus distribuciones en busca de valores faltantes o extremos y decidir qué hacer con ellos.
 
-------------------------------------------------------------------------
+# 4. Análisis de los datos
 
-# Análisis de los datos
-
-------------------------------------------------------------------------
-
-## Comprobación de la normalidad
+## 4.1. Comprobación de la normalidad
 
 Para comprobar la normalidad de las variables numéricas dentro del dataset utilizaremos en primer lugar la gráfica quantile-quantile y el histograma. Con la gráfica QQ podemos comparar los cuantiles de los datos observados con los cuantiles esperados bajo una distribución teórica específica. Si los dos conjuntos de datos siguen una misma distribución los puntos se distribuirán a lo largo de una recta. En el caso e seguir una distribución normal los conjuntos de datos se distribuirán a lo largo de una recta diagonal. Por ello, este tipo de gráficos es útil para comprobar la normalidad de las variables.
 
 ```{r ,eval=TRUE,echo=TRUE}
-par(mfrow=c(2,2))
+par(mfrow=c(3,2))
 for(i in 1:ncol(fotocasa.df)) {
   if (is.numeric(fotocasa.df[,i])){
     qqnorm(fotocasa.df[,i],main = paste("Normal Q-Q Plot for ",colnames(fotocasa.df)[i]))
@@ -332,7 +308,8 @@ for(i in 1:ncol(fotocasa.df)) {
   }
 }
 ```
-Los resultados de las gráficas QQ nos indican que la varibale precio podria ser candidata a seguir una distribución normal. Por otra parte, los datos de la variable "rooms" y "surface" se alejan siginificantivamente de la diagonal con lo cuál probablemente no sigan una distribución normal.
+
+Los resultados de las gráficas QQ nos indican que la variable precio podría ser candidata a seguir una distribución normal. Por otra parte, los datos de la variable "rooms" y "surface" se alejan significativamente de la diagonal con lo cuál probablemente no sigan una distribución normal.
 
 Mediante el test de Shapiro comprobaremos finalmente el supuesto de normalidad de las tres variables.
 
@@ -348,52 +325,59 @@ shapiro.test(fotocasa.df$surface)
 shapiro.test(fotocasa.df$rooms)
 ```
 
-El test de Shapiro asume como hipótesis nula que la población está distribuida normalmente. Por lo tanto, cuando el valor p es menor que el nivel de significancia (normalmente $\alpha$=0.05), la hipótesis nula es rechazada y se puede decir que los datos no cuentan con una distribución normal. Como se puede ver en los tres test realizados, ninguna de las tres variables sigue una distribución normal.
+El test de Shapiro asume como hipótesis nula que la población está distribuida normalmente. Por lo tanto, cuando el valor p es menor que el nivel de significancia (normalmente $\alpha$=0.05), tenemos evidencias fuertes de que la hipótesis nula puede ser rechazada y en consecuencia, no podemos considerar que ninguna de las tres variables analizadas siga una distribución normal.
 
-## Comprobación de la homocedasticidad
+## 4.2. Comprobación de la homocedasticidad
 
-Tal y como se pide en el enunciado, realizaremos también una comprobación de la homocedasticidad en los datos, es decir la igualdad de varianzas entre los grupos. Cuando los datos utilizados no siguen una distribución normal, el test más útil para realizar la comprobación de la igualdad de las varianzas es el ede Flignet-Killeen.
-
-A continuación realizamos el test de Flignet-Killeen con algunas variables y vemos que no se cumple la homocedasticidad de los datos, puesto que las pruebas obtenidas tienen un p-valor inferior al nivel de siginificancia de $\alpha$=0.05.
+La homocedasticidad debe ser comprobada por parejas de variables. Dado que la relación principal que queremos analizar en esta práctica es la del precio respecto al resto de variables y que ninguna de ellas puede ser supuesta como normal, hecho que implica que para todas las parejas deberíamos utilizar el test de Flignet-Killeen, sólo mostramos los resultados de la comprobación de la igualdad de las varianzas para las parejas "price"-"surface" y "price"-"rooms":
 
 ```{r message= FALSE, warning=FALSE}
 fligner.test(price ~ surface, data = fotocasa.df)
 fligner.test(price ~ rooms, data = fotocasa.df)
 ```
 
-## Regresión lineal
+Aplicamos el test de Flignet-Killeen y vemos que no se cumple la homocedasticidad de los datos, puesto que las pruebas obtenidas tienen un p-valor inferior al nivel de significancia de $\alpha$=0.05.
 
-Antes de aplicar una regresión lineal al conjunto de datos, con el objetivo de aproximar la relación de dependencia entre dos variables, veremos como están distribuidos los datos en el conjunto: 
+## 4.3. Regresión lineal
+
+Antes de aplicar una regresión lineal al conjunto de datos, con el objetivo de aproximar la relación de dependencia entre las variables "price" y "surface", veremos como están distribuidos los datos en el conjunto:
 
 ```{r message= FALSE, warning=FALSE}
 table(fotocasa.df$rooms, fotocasa.df$tipo_vivienda)
 ```
 
-Vemos, que la mayoria de immuebles son del tipo "Piso".
+Vemos que la mayoría de inmuebles son del tipo "Piso".
 
 A continuación determinaremos las medias de los precios de las viviendas y de los metros cuadrados que tienen en función de las habitaciones. Además determinaremos el precio medio por metro cuadrado.
+
 ```{r message= FALSE, warning=FALSE}
-aggregate(cbind(price,surface, "€/m2" = price/surface) ~ rooms , data = fotocasa.df, FUN = mean)
+aggregate(cbind(price, surface, "euros /m2" = price/surface) ~ rooms, 
+          data = fotocasa.df, FUN = mean)
 ```
-De la tabla de agregación vemos que el precio medio y la superficie media de las viviendas aumenta en función del número de habitaciones, cosa que parece lógica. Cabria mencionar, que en el caso de 6 habitaciones, tanto el precio medio de la vivienda como el número de metro cuadrados medio disminuye en comparación a los pisos de 5 habitaciones. Esto se debe probablemente a algún valor extremo y a la reducida cantidad de viviendas con tal número de habitaciones, lo cuál reduce la significancia de la media calculada.
+
+De la tabla de agregación vemos que el precio medio y la superficie media de las viviendas aumenta en función del número de habitaciones, cosa que parece lógica. Cabría mencionar, que en el caso de 6 habitaciones, tanto el precio medio de la vivienda como el número de metro cuadrados medio disminuye en comparación a los pisos de 5 habitaciones. Esto se debe probablemente a algún valor extremo y a la reducida cantidad de viviendas con tal número de habitaciones, lo cuál reduce la utilidad de la media calculada.
 
 A continuación, realizaremos la misma agregación pero diferenciando en el grupo de datos según el tipo de vivienda:
 
-Para el tipo de viviendas del tipo "piso", las medias obtenidas son:
+Para el tipo de viviendas del tipo "Piso", las medias obtenidas son:
 
 ```{r message= FALSE, warning=FALSE}
 pisos <- fotocasa.df %>% filter(fotocasa.df$tipo_vivienda == "Piso")
-aggregate(cbind(price,surface, "€/m2" = price/surface) ~ rooms , data = pisos, FUN = mean)
+aggregate(cbind(price,surface, "euros / m2" = price/surface) ~ rooms, 
+          data=pisos, FUN=mean)
 ```
+
 Para el tipo de viviendas del tipo "Casa", las medias quedan de la siguiente forma:
+
 ```{r message= FALSE, warning=FALSE}
 casas <- fotocasa.df %>% filter(fotocasa.df$tipo_vivienda == "Casa")
-aggregate(cbind(price,surface, "€/m2" = price/surface) ~ rooms , data = casas, FUN = mean)
+aggregate(cbind(price,surface, "euros / m2" = price/surface) ~ rooms, 
+          data=casas, FUN=mean)
 ```
 
-De las tablas de agregación expuestas anteriormente se identifica, que la media por metro cuadrado disminuye para las viviendas del tipo "piso", mientras que la media por metro cuadrado se mantiene relativamente estable para las viviendas del tipo "casa".
+De las tablas de agregación expuestas anteriormente se identifica que la media por metro cuadrado disminuye para las viviendas del tipo "Piso", mientras que la media por metro cuadrado se mantiene relativamente estable para las viviendas del tipo "Casa".
 
-A continuación nos centraremos por lo tanto en los pisos, para poder determinar si el precio de la vivienda se ajusta a una función lineal en función de la superficie del piso.
+A continuación nos centraremos en los pisos, para poder determinar si el precio de la vivienda se ajusta a una función lineal en función de la superficie del piso.
 
 ```{r message= FALSE, warning=FALSE}
 # Seleccionamos solo los pisos
@@ -425,28 +409,33 @@ pisos.entrenamiento <- pisos[variable_aleatoria, ]
 pisos.test <- pisos[-variable_aleatoria, ]
 ```
 
-A continuación creamos un modelo de regresión lineal a partir del cual queremos determinar el precio en función de la superfície del piso y entrenado a partir de los datos previamente seleccionados "pisos.entrenamiento".
+A continuación creamos un modelo de regresión lineal a partir del cual queremos determinar el precio en función de la superficie del piso y entrenado a partir de los datos previamente seleccionados "pisos.entrenamiento".
+
 ```{r message= FALSE, warning=FALSE}
 model <- lm(formula=price ~ surface, data=pisos.entrenamiento)
 summary(model)
 ```
-En este caso el coefciente R^2 es relativamente bajo `r summary(model)$r.squared`
+
+En este caso el coeficiente R^2 es relativamente bajo `r summary(model)$r.squared`
 
 De todas formas, realizaremos una predicción del precio de los pisos en función de la superficie a partir del modelo conseguido. 
+
 ```{r message= FALSE, warning=FALSE}
 # Predicción a partir del modelo model
 estimated.price <- predict(model, pisos.test, type="response")
 
 # Creación de un dataframe para la comparación entre la predicción y el valor real
-results <- data.frame(pisos.test$price, predicted=estimated.price, dif= (pisos.test$price-estimated.price)*100/pisos.test$price)
-colnames(results)<- c("Real", "Predecido","Dif%")
+results <- data.frame(pisos.test$price, predicted=estimated.price, dif=
+                        (pisos.test$price-estimated.price)*100/pisos.test$price)
+colnames(results)<- c("Real", "Predicho","Dif%")
 kable(head(results, 10), format = "markdown")
 
 # Obtención de la media del error
 mean(abs(results$`Dif%`))
 ```
 
-Visto que el modelo no es del todo bueno, al estar R^2 alejado de 1, realizamos un segundo modelo de regesión lineal. Tal y como hemos visto en una de las gráficas superiores, vemos que para los pisos de 1 habitación y de más de 4 habitaciones, la correlación lineal entre el precio prácticamente no existe. Por ello consideraremos para el siguiente modelo sólo los pisos de 2, 3 y 4 habitaciones.
+Visto que el modelo no es del todo bueno, al estar R^2 alejado de 1, realizamos un segundo modelo de regresión lineal. Tal y como hemos visto en una de las gráficas superiores, vemos que para los pisos de 1 habitación y de más de 4 habitaciones, la correlación lineal entre el precio prácticamente no existe. Por ello consideraremos para el siguiente modelo sólo los pisos de 2, 3 y 4 habitaciones.
+
 ```{r}
 pisos2 <- pisos %>% filter(pisos$rooms == 2 | pisos$rooms == 3 | pisos$rooms == 4)
 
@@ -462,21 +451,25 @@ pisos2.test <- pisos2[-variable_aleatoria, ]
 ```
 
 En este segundo modelo consideramos además otras variables como el parking, la piscina, la terraza y el balcón.
+
 ```{r message= FALSE, warning=FALSE}
-model2 <- lm(formula=price ~ surface + parking + swimming_pool + terrace + balcony, data=pisos2.entrenamiento)
+model2 <- lm(formula=price ~ surface + parking + swimming_pool + terrace + 
+               balcony, data=pisos2.entrenamiento)
 summary(model2)
 ```
 
-Vemos de los resultados que en este caso se ha mejorado ligeramente el valor R^2, ya que este es igual a `r summary(model2)$r.squared`.
+Vemos de los resultados que en este caso se ha mejorado ligeramente el valor R^2, ya que este es igual a `r summary(model2)$r.squared`. Estamos más interesados en conocer el peso relativo de cada una de las variables sobre el precio final del inmueble que en la creación de un modelo robusto, por tanto este valor debe ser tomado de una forma más bien anecdótica.
 
 De los datos que obtenemos del modelo, resulta interesante valorar los coeficientes que obtenemos.
+
 ```{r message= FALSE, warning=FALSE}
 coef(model2)
 ```
 
-Parece interesante ver que el primer coeficiente que determina la relación entre la superficie y el precio igual a `coef(model2)$surface`es cercano a la media de los precios por metro cuadrado establecido anteriormente. Los otros coeficientes determinan en que medida afectaria cada propiedad al precio de la vivienda. Resaltar por lo tanto que una plaza de parking tendria una mayor influencia según el modelo calculado.
+Notemos que el primer coeficiente que determina la relación entre la superficie y el precio igual a `coef(model2)$surface` es cercano a la media de los precios por metro cuadrado establecido anteriormente. Los otros coeficientes determinan en qué medida afectaría cada propiedad al precio de la vivienda. Resaltar por lo tanto que una plaza de parking tendría una mayor influencia según el modelo calculado.
 
-Finalmente realizamos una segunda predicción a raiz del segundo modelo calculado.
+Finalmente, realizamos una segunda predicción a raíz del segundo modelo calculado.
+
 ```{r message= FALSE, warning=FALSE}
 estimated.price <- predict(model2, pisos2.test, type="response")
 results2 <- data.frame(pisos2.test$price, predicted=estimated.price, dif= (pisos2.test$price-estimated.price)*100/pisos2.test$price)
@@ -485,9 +478,9 @@ kable(head(results2, 10), format = "markdown")
 mean(abs(results2$`Dif%`))
 ```
 
-Vemos que en este caso, la media del error entre los valores reales y el predecido disminuye ligeramente al aumentar la calidad del modelo de regresión lineal.
+Vemos que en este caso, la media del error entre los valores reales y el predicho disminuye ligeramente al aumentar la calidad del modelo de regresión lineal.
 
-## Correlación
+## 4.4. Correlación
 
 Otro análisis que realizamos es el de la correlación entre diferentes variables. Para ello nos ayudamos de la función cor() en R. Al no cumplirse la condición de normalidad, como hemos visto antes, emplearemos el método de Spearman. Cabe mencionar que para ello sólo se consideran las variables numéricas dentro del dataset.
 
@@ -498,7 +491,7 @@ cor(fotocasa.df.num, method="spearman")
 
 Los resultados muestran que las variables precio y superficie y superficie y habitaciones tienen respectivamente una correlación cercana al 0,60.
 
-## Influencia del tipo de vivienda sobre el precio
+## 4.5. Influencia del tipo de vivienda sobre el precio
 
 Como parte de nuestro análisis, nos interesa comprobar si los precios son, en promedio, diferentes según el tipo de inmueble, cuyos valores posibles son "Piso", "Casa" u "Otros"; por tanto hablamos de una comparación entre más de dos grupos. Dado que ya hemos comprobado que la variable "price" no sigue una distribución normal mediante el test de Shapiro-Wilk, debemos utilizar la prueba del Kruskal-Wallis; sin embargo no está de más comprobar si existe heterocedasticidad para esta pareja de variables mediante el test de Fligner-Killeen:
 
@@ -514,18 +507,15 @@ kruskal.test(price ~ tipo_vivienda, data = fotocasa.df)
 
 En este caso observamos que el p-valor obtenido es mucho menor al nivel de significancia. Dado que la hipótesis nula de un test de Kruskal-Wallis es que no se observan diferencias entre los distintos grupos, el p-valor nos indica que tenemos pruebas para rechazar la hipótesis nula y concluir que existen diferencias significativas en el precio según el tipo de vivienda.
 
-------------------------------------------------------------------------
+# 5. Representación gráfica de los resultados
 
-# Representación gráfica de los resultados
-
-------------------------------------------------------------------------
 Durante los capítulos anteriores se realizaron diversas representaciones gráficas con lo cuál en este apartado sólo realizamos la representación de los resultados de los 2 modelos de regresión lineal obtenidos.
 
 ```{r message= FALSE, warning=FALSE}
 results$surface <- pisos.test$surface
 ggplot() +
   geom_point(data = results, aes(surface, Real), color = "blue", size = 2) +
-  geom_point(data = results, aes(surface, Predecido), color = "red", size = 2) +
+  geom_point(data = results, aes(surface, Predicho), color = "red", size = 2) +
   theme_minimal() +
   labs(x = "Superficie",
     y = "Precio",
@@ -550,12 +540,12 @@ cor.mat <- round(cor(fotocasa.df.num),2)
 corrplot(cor.mat, type="upper", order="hclust", tl.col="black", tl.srt=45)
 ```
 
-------------------------------------------------------------------------
+# 6. Resolución del problema
 
-# Resolución del problema
+A lo largo de la Práctica se han preparado los datos (selección, integración y limpieza) para posteriormente realizar diversos análisis con ellos. El enfoque principal ha sido identificar posibles correlaciones entre los diferentes parámetros que describen una vivienda. Se ha podido identificar una cierta correlación entre el precio de la vivienda y la superficie que tienen, no obstante esta correlación no ha sido tan elevada como hemos supuesto inicialmente.
 
-------------------------------------------------------------------------
+Para determinar el precio de una vivienda además de la superficie y ciertas propiedades que hemos intentado considerar (como tener una piscina, una terraza o una plaza de parking) en nuestros análisis durante la práctica, también influyen otros factores que no se han podido evaluar. Estos factores, como podrían ser la edad de la vivienda o la localización tienen probablemente una mayor influencia, motivo por el cuál las correlaciones de los factores considerados son relativamente 
 
-A lo largo de la Práctica se han preparado los datos (selección, integración y limpieza) para posteriormente realizar diversos análisis con ellos. El enfoque principal ha sido identificar posibles correlaciones entre los diferentes parámetros que describen una vivienda. Se ha podido identificar una cierta correlación entre el precio de la vivienda y la superficie que tienen, no obstante ésta correlación no ha sido tan elevada como supuesta inicialmente.
+# 7. Contribuciones
 
-Para determinar el precio de una vivienda además de la superficie y ciertas propiedades que hemos intentado considerar (como tener una piscina, una terraza o una plaza de parking) en nuestros análisis durante la práctica, también influyen otros factores que no se han podido evaluar. Estos factores, como podrian ser la edad de la vivienda o la localización tienen probablemente una mayor influencia, motivo por el cuál las correlaciones de los factores considerados son relativamente bajas.
+![Tabla de Contribuciones](contribuciones.JPG)

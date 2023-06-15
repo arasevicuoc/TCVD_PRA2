@@ -1,1 +1,0 @@
-En esta carpeta debe figurar todo el código generado para ejecutar la PRA2
